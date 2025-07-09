@@ -5,161 +5,226 @@ local player = Players.LocalPlayer
 local RANDOMIZE_INTERVAL = 30
 local countdown = RANDOMIZE_INTERVAL
 local running = true
+local autoStopEnabled = true
 
--- ✅ Egg Names
 local EGG_NAMES = {
-	"Bug Egg", "Night Egg", "Mythical Egg", "Paradise Egg", "Oasis Egg"
+    "Bug Egg", "Night Egg", "Mythical Egg", "Paradise Egg", "Oasis Egg"
 }
 
--- ✅ Custom Pet Pools
+-- ✅ Pet pools (excluded auto-stop pets)
 local PET_POOL = {
-	["Bug Egg"] = {"Snail", "Caterpillar", "Giant Ant"},
-	["Night Egg"] = {"Hedgehog", "Frog", "Echo Frog", "Blood Hedgehog", "Blood Kiwi"},
-	["Mythical Egg"] = {"Squirrel", "Red Giant Ant", "Grey Mouse"},
-	["Paradise Egg"] = {"Ostrich", "Peacock", "Capybara"},
-	["Oasis Egg"] = {"Meercat", "Sandsnake", "Oxolotl"},
+    ["Bug Egg"] = {"Snail", "Caterpillar", "Giant Ant"},
+    ["Night Egg"] = {"Hedgehog", "Frog", "Echo Frog", "Blood Hedgehog", "Blood Kiwi"},
+    ["Mythical Egg"] = {"Squirrel", "Red Giant Ant", "Grey Mouse"},
+    ["Paradise Egg"] = {"Ostrich", "Peacock", "Capybara"},
+    ["Oasis Egg"] = {"Meercat", "Sandsnake", "Oxolotl"},
 }
 
--- 🔁 Utility: Random choice
+-- ✅ Auto-stop pets (hidden from UI but still active)
+local AUTO_STOP_PET_NAMES = {
+    "Dragonfly", "Queen Bee", "Red Fox", "Raccoon", "Fennec Fox", "Mimic Octopus"
+}
+
+-- ✅ These will not be shown in egg UI
+local HIDDEN_AUTO_STOP_PETS = {
+    ["Dragonfly"] = true,
+    ["Queen Bee"] = true,
+    ["Red Fox"] = true,
+    ["Raccoon"] = true,
+    ["Fennec Fox"] = true,
+    ["Mimic Octopus"] = true,
+}
+
+local controlGui
+local controlFrame
+
 local function randomChoice(list)
-	return list[math.random(1, #list)]
+    return list[math.random(1, #list)]
 end
 
--- 🔁 Ensure egg has a StringValue for current pet
 local function ensureCurrentPet(egg)
-	local sv = egg:FindFirstChild("CurrentPet")
-	if not sv then
-		sv = Instance.new("StringValue")
-		sv.Name = "CurrentPet"
-		sv.Value = ""
-		sv.Parent = egg
-	end
-	return sv
+    local sv = egg:FindFirstChild("CurrentPet")
+    if not sv then
+        sv = Instance.new("StringValue")
+        sv.Name = "CurrentPet"
+        sv.Value = ""
+        sv.Parent = egg
+    end
+    return sv
 end
 
--- 🎯 Check if egg is close enough to local player (20 studs)
 local function isPlayerNearby(egg)
-	local part = egg:FindFirstChildWhichIsA("BasePart")
-	local char = player.Character
-	if not part or not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-	return (part.Position - char.HumanoidRootPart.Position).Magnitude <= 20
+    local part = egg:FindFirstChildWhichIsA("BasePart")
+    local char = player.Character
+    if not part or not char or not char:FindFirstChild("HumanoidRootPart") then return false end
+    return (part.Position - char.HumanoidRootPart.Position).Magnitude <= 20
 end
 
--- 🧠 Update or create UI for the egg
 local function updateEggUI(egg)
-	local part = egg:FindFirstChildWhichIsA("BasePart")
-	local currentPet = egg:FindFirstChild("CurrentPet")
-	if not part or not currentPet then return end
+    local part = egg:FindFirstChildWhichIsA("BasePart")
+    local currentPet = egg:FindFirstChild("CurrentPet")
+    if not part or not currentPet then return end
 
-	if not isPlayerNearby(egg) then
-		local existing = egg:FindFirstChild("PetUI")
-		if existing then existing:Destroy() end
-		return
-	end
+    if not isPlayerNearby(egg) then
+        local existing = egg:FindFirstChild("PetUI")
+        if existing then existing:Destroy() end
+        return
+    end
 
-	local ui = egg:FindFirstChild("PetUI")
-	if not ui then
-		ui = Instance.new("BillboardGui")
-		ui.Name = "PetUI"
-		ui.Adornee = part
-		ui.Size = UDim2.new(0, 180, 0, 60)
-		ui.StudsOffset = Vector3.new(0, 3, 0)
-		ui.AlwaysOnTop = true
-		ui.Parent = egg
+    local ui = egg:FindFirstChild("PetUI")
+    if not ui then
+        ui = Instance.new("BillboardGui")
+        ui.Name = "PetUI"
+        ui.Adornee = part
+        ui.Size = UDim2.new(0, 180, 0, 60)
+        ui.StudsOffset = Vector3.new(0, 3, 0)
+        ui.AlwaysOnTop = true
+        ui.Parent = egg
 
-		local text = Instance.new("TextLabel")
-		text.Name = "Label"
-		text.Size = UDim2.new(1, 0, 1, 0)
-		text.BackgroundTransparency = 1
-		text.TextScaled = true
-		text.Font = Enum.Font.GothamBold
-		text.TextColor3 = Color3.new(1, 1, 0)
-		text.Parent = ui
-	end
+        local text = Instance.new("TextLabel")
+        text.Name = "Label"
+        text.Size = UDim2.new(1, 0, 1, 0)
+        text.BackgroundTransparency = 1
+        text.TextScaled = true
+        text.Font = Enum.Font.GothamBlack
+        text.TextColor3 = Color3.new(1, 1, 0)
+        text.Parent = ui
+    end
 
-	local label = ui:FindFirstChild("Label")
-	if label then
-		label.Text = egg.Name .. " → " .. currentPet.Value .. "\nChanging in: " .. countdown .. "s"
-	end
+    local label = ui:FindFirstChild("Label")
+    if label then
+        if not HIDDEN_AUTO_STOP_PETS[currentPet.Value] then
+            label.Text = egg.Name .. " → " .. currentPet.Value .. "\nChanging in: " .. countdown .. "s"
+        else
+            label.Text = "" -- fully hidden
+        end
+    end
+
+    if autoStopEnabled and table.find(AUTO_STOP_PET_NAMES, currentPet.Value) then
+        running = false
+    end
 end
 
--- 🔁 Randomize pet selection for valid eggs
 local function randomizeAllEggs()
-	for _, egg in ipairs(Workspace:GetDescendants()) do
-		if table.find(EGG_NAMES, egg.Name) then
-			local sv = ensureCurrentPet(egg)
-			sv.Value = randomChoice(PET_POOL[egg.Name])
-			updateEggUI(egg)
-		end
-	end
+    for _, egg in ipairs(Workspace:GetDescendants()) do
+        if table.find(EGG_NAMES, egg.Name) then
+            local sv = ensureCurrentPet(egg)
+            sv.Value = randomChoice(PET_POOL[egg.Name])
+            updateEggUI(egg)
+        end
+    end
 end
 
--- 🎮 Control panel to start/stop the system
 local function createControlPanel()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "EggControlGui"
-	gui.ResetOnSpawn = false
-	gui.Parent = player:WaitForChild("PlayerGui")
+    if controlGui then return end
 
-	local frame = Instance.new("Frame")
-	frame.Size = UDim2.new(0, 150, 0, 100)
-	frame.Position = UDim2.new(0.05, 0, 0.15, 0)
-	frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-	frame.BorderSizePixel = 0
-	frame.Active = true
-	frame.Draggable = true
-	frame.Parent = gui
+    controlGui = Instance.new("ScreenGui")
+    controlGui.Name = "ControlGui"
+    controlGui.ResetOnSpawn = false
+    controlGui.Parent = player:WaitForChild("PlayerGui")
 
-	local stopButton = Instance.new("TextButton")
-	stopButton.Size = UDim2.new(1, -10, 0, 40)
-	stopButton.Position = UDim2.new(0, 5, 0, 5)
-	stopButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-	stopButton.Text = "🛑 Stop"
-	stopButton.TextColor3 = Color3.new(1, 1, 1)
-	stopButton.Font = Enum.Font.GothamBold
-	stopButton.TextScaled = true
-	stopButton.Parent = frame
+    controlFrame = Instance.new("Frame")
+    controlFrame.Size = UDim2.new(0, 260, 0, 230)
+    controlFrame.Position = UDim2.new(0.03, 0, 0.15, 0)
+    controlFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    controlFrame.BackgroundTransparency = 0.2
+    controlFrame.BorderSizePixel = 0
+    controlFrame.Active = true
+    controlFrame.Draggable = true
+    controlFrame.Parent = controlGui
 
-	local resumeButton = Instance.new("TextButton")
-	resumeButton.Size = UDim2.new(1, -10, 0, 40)
-	resumeButton.Position = UDim2.new(0, 5, 0, 50)
-	resumeButton.BackgroundColor3 = Color3.fromRGB(60, 200, 60)
-	resumeButton.Text = "▶️ Resume"
-	resumeButton.TextColor3 = Color3.new(1, 1, 1)
-	resumeButton.Font = Enum.Font.GothamBold
-	resumeButton.TextScaled = true
-	resumeButton.Parent = frame
+    local stopButton = Instance.new("TextButton")
+    stopButton.Size = UDim2.new(1, -10, 0, 40)
+    stopButton.Position = UDim2.new(0, 5, 0, 5)
+    stopButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    stopButton.Text = "Stop"
+    stopButton.TextColor3 = Color3.new(1, 1, 1)
+    stopButton.Font = Enum.Font.GothamBold
+    stopButton.TextScaled = true
+    stopButton.Parent = controlFrame
+    stopButton.MouseButton1Click:Connect(function()
+        running = false
+    end)
 
-	stopButton.MouseButton1Click:Connect(function()
-		running = false
-	end)
+    local resumeButton = Instance.new("TextButton")
+    resumeButton.Size = UDim2.new(1, -10, 0, 40)
+    resumeButton.Position = UDim2.new(0, 5, 0, 50)
+    resumeButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    resumeButton.Text = "Resume"
+    resumeButton.TextColor3 = Color3.new(1, 1, 1)
+    resumeButton.Font = Enum.Font.GothamBold
+    resumeButton.TextScaled = true
+    resumeButton.Parent = controlFrame
+    resumeButton.MouseButton1Click:Connect(function()
+        running = true
+    end)
 
-	resumeButton.MouseButton1Click:Connect(function()
-		running = true
-	end)
+    local autoToggle = Instance.new("TextButton")
+    autoToggle.Size = UDim2.new(1, -10, 0, 30)
+    autoToggle.Position = UDim2.new(0, 5, 0, 95)
+    autoToggle.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
+    autoToggle.Text = "Auto Stop: ON"
+    autoToggle.TextColor3 = Color3.new(1, 1, 1)
+    autoToggle.Font = Enum.Font.GothamBold
+    autoToggle.TextScaled = true
+    autoToggle.Parent = controlFrame
+    autoToggle.MouseButton1Click:Connect(function()
+        autoStopEnabled = not autoStopEnabled
+        autoToggle.Text = "Auto Stop: " .. (autoStopEnabled and "ON" or "OFF")
+        autoToggle.BackgroundColor3 = autoStopEnabled and Color3.fromRGB(255,170,0) or Color3.fromRGB(100,100,100)
+    end)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -10, 0, 80)
+    label.Position = UDim2.new(0, 5, 0, 130)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.Font = Enum.Font.GothamBold
+    label.TextScaled = false
+    label.TextSize = 16
+    label.TextWrapped = true
+    label.TextYAlignment = Enum.TextYAlignment.Top
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Text = "Auto-stop pets:\n"
+    for _, name in ipairs(AUTO_STOP_PET_NAMES) do
+        if HIDDEN_AUTO_STOP_PETS[name] then
+            label.Text = label.Text .. " - " .. name .. "\n"
+        end
+    end
+    label.Parent = controlFrame
+
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(1, -10, 0, 30)
+    toggleButton.Position = UDim2.new(0, 5, 0, 210)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 255)
+    toggleButton.Text = "Hide Panel"
+    toggleButton.TextColor3 = Color3.new(1, 1, 1)
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.TextScaled = true
+    toggleButton.Parent = controlFrame
+    toggleButton.MouseButton1Click:Connect(function()
+        controlFrame.Visible = not controlFrame.Visible
+        toggleButton.Text = controlFrame.Visible and "Hide Panel" or "Show Panel"
+    end)
 end
 
--- 🔁 Loop to handle timer and UI updates
 task.spawn(function()
-	while true do
-		if running then
-			countdown -= 1
-			if countdown <= 0 then
-				countdown = RANDOMIZE_INTERVAL
-				randomizeAllEggs()
-			end
-		end
-
-		for _, egg in ipairs(Workspace:GetDescendants()) do
-			if table.find(EGG_NAMES, egg.Name) then
-				updateEggUI(egg)
-			end
-		end
-
-		wait(1)
-	end
+    while true do
+        if running then
+            countdown -= 1
+            if countdown <= 0 then
+                countdown = RANDOMIZE_INTERVAL
+                randomizeAllEggs()
+            end
+        end
+        for _, egg in ipairs(Workspace:GetDescendants()) do
+            if table.find(EGG_NAMES, egg.Name) then
+                updateEggUI(egg)
+            end
+        end
+        wait(1)
+    end
 end)
 
--- 🚀 Init
 createControlPanel()
 randomizeAllEggs()
